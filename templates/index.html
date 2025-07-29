@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32-CAM con YOLO</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background-color: #f0f0f0;
+      padding: 40px;
+    }
+
+    .video-container {
+      position: relative;
+      margin: 0 auto;
+      max-width: 640px;
+    }
+
+    img {
+      max-width: 100%;
+      border: 5px solid #333;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      transition: opacity 0.2s ease-in-out;
+    }
+
+    .recording-indicator {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background-color: red;
+      display: none;
+      animation: blink 1s infinite;
+    }
+
+    @keyframes blink {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+
+    button {
+      font-size: 18px;
+      padding: 10px 20px;
+      margin: 10px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      background-color: #0066cc;
+      color: white;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background-color: #0055aa;
+    }
+
+    button.active {
+      background-color: #cc0000;
+    }
+
+    #clase {
+      font-size: 22px;
+      margin-top: 20px;
+      color: #333;
+      min-height: 30px;
+    }
+
+    .ip-container {
+      margin: 20px auto;
+      padding: 15px;
+      background-color: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      max-width: 400px;
+    }
+
+    input {
+      padding: 8px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      margin-right: 10px;
+      width: 180px;
+    }
+
+    .mensaje {
+      margin-top: 10px;
+      padding: 8px;
+      border-radius: 5px;
+      display: none;
+    }
+
+    .exito {
+      background-color: #d4edda;
+      color: #155724;
+    }
+
+    .error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+  </style>
+</head>
+<body>
+  <h1>Detección con ESP32-CAM y YOLO</h1>
+  
+  <div class="ip-container">
+    <h3>Configuración de IP</h3>
+    <input type="text" id="ipInput" placeholder="Ejemplo: 10.42.0.255" value="{{ current_ip }}">
+    <button onclick="actualizarIP()">Actualizar IP</button>
+    <div id="mensaje" class="mensaje"></div>
+  </div>
+  
+  <div class="video-container">
+    <img id="img" src="/imagen" alt="Imagen de la cámara">
+    <div id="recordingIndicator" class="recording-indicator"></div>
+  </div>
+  <p id="clase">Sin detección</p>
+
+  <button onclick="detectar()">📸 Detectar ahora</button>
+  <button id="autoBtn" onclick="toggleAutoDeteccion()">▶️ Iniciar detección automática</button>
+
+  <script>
+    let autoDetectar = false;
+    let intervalo = null;
+
+    async function actualizarIP() {
+      const nuevaIP = document.getElementById("ipInput").value.trim();
+      const mensajeDiv = document.getElementById("mensaje");
+      
+      if (!nuevaIP) {
+        mostrarMensaje("Por favor ingrese una IP válida", false);
+        return;
+      }
+      
+      try {
+        const respuesta = await fetch("/actualizar_ip", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ ip: nuevaIP })
+        });
+        
+        const resultado = await respuesta.json();
+        mostrarMensaje(resultado.message, resultado.success);
+      } catch (error) {
+        mostrarMensaje("Error al actualizar la IP", false);
+        console.error("Error:", error);
+      }
+    }
+    
+    function mostrarMensaje(texto, esExito) {
+      const mensajeDiv = document.getElementById("mensaje");
+      mensajeDiv.textContent = texto;
+      mensajeDiv.style.display = "block";
+      
+      if (esExito) {
+        mensajeDiv.className = "mensaje exito";
+      } else {
+        mensajeDiv.className = "mensaje error";
+      }
+      
+      setTimeout(() => {
+        mensajeDiv.style.display = "none";
+      }, 5000);
+    }
+
+    function hablar(texto) {
+      const mensaje = new SpeechSynthesisUtterance(texto);
+      mensaje.lang = "es-ES";
+      window.speechSynthesis.speak(mensaje);
+    }
+
+    async function actualizarImagenYClase() {
+      try {
+        // Crear una nueva imagen y cargarla en segundo plano
+        const nuevaImagen = new Image();
+        const timestamp = new Date().getTime();
+        nuevaImagen.src = "/imagen?" + timestamp;
+        
+        // Actualizar la clase mientras se carga la imagen
+        const clase = await fetch("/clase").then(res => res.text());
+        document.getElementById("clase").textContent = clase;
+        
+        // Solo hablar cuando hay una detección nueva y diferente
+        const claseAnterior = document.getElementById("clase").getAttribute("data-clase-anterior") || "";
+        if (clase !== "Sin detección" && clase !== claseAnterior) {
+          hablar("Se detectó: " + clase);
+          document.getElementById("clase").setAttribute("data-clase-anterior", clase);
+        }
+
+        // Cuando la imagen termine de cargar, actualizar la imagen mostrada
+        nuevaImagen.onload = function() {
+          document.getElementById("img").src = nuevaImagen.src;
+        };
+      } catch (err) {
+        console.error("Error actualizando:", err);
+      }
+    }
+
+    async function detectar() {
+      await fetch("/detectar");
+      await actualizarImagenYClase();
+    }
+
+    function toggleAutoDeteccion() {
+      autoDetectar = !autoDetectar;
+      const boton = document.getElementById("autoBtn");
+      const recordingIndicator = document.getElementById("recordingIndicator");
+
+      if (autoDetectar) {
+        // Activar modo video
+        boton.textContent = "⏹️ Detener detección automática";
+        boton.classList.add("active");
+        recordingIndicator.style.display = "block";
+        
+        // Iniciar detección continua
+        detectar(); // una vez
+        intervalo = setInterval(detectar, 300); // cada 0.3 seg para simular video más fluido
+      } else {
+        // Desactivar modo video
+        boton.textContent = "▶️ Iniciar detección automática";
+        boton.classList.remove("active");
+        recordingIndicator.style.display = "none";
+        
+        // Detener detección continua
+        clearInterval(intervalo);
+      }
+    }
+  </script>
+</body>
+</html>
