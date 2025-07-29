@@ -42,11 +42,27 @@ Esta aplicación permite detectar objetos en tiempo real utilizando una cámara 
 
 Si encuentras un error 502 Bad Gateway, puede deberse a:
 
-1. **Tiempo de carga del modelo YOLO**: El modelo puede tardar en cargarse, especialmente en el plan gratuito de Render. La configuración de Gunicorn se ha ajustado para permitir tiempos de carga más largos.
+1. **Tiempo de carga del modelo YOLO**: El modelo puede tardar en cargarse, especialmente en el plan gratuito de Render. La configuración de Gunicorn se ha ajustado para permitir tiempos de carga más largos (300 segundos).
 
 2. **Problemas de memoria**: Los modelos YOLO requieren bastante memoria. Si el servicio se queda sin memoria, puede generar un error 502. Considera actualizar a un plan con más recursos si esto ocurre frecuentemente.
 
 3. **Compatibilidad de versiones**: Asegúrate de que las versiones de las dependencias sean compatibles con la versión de Python utilizada.
+
+#### Error de PyTorch al cargar el modelo YOLO
+
+Si encuentras un error como `_pickle.UnpicklingError: Weights only load failed` o `Unsupported global: ultralytics.nn.tasks.DetectionModel`, esto se debe a cambios en PyTorch 2.6 que modificaron el comportamiento predeterminado de `torch.load()`. La solución implementada en este proyecto es:
+
+1. Añadir `torch.serialization.add_safe_globals(['ultralytics.nn.tasks.DetectionModel'])` antes de cargar el modelo.
+2. Especificar una versión compatible de PyTorch (2.0.1) en el archivo `requirements.txt`.
+3. Configurar correctamente la carga del modelo con `YOLO("yolov8n.pt", task='detect')`.
+
+#### Optimizaciones de rendimiento
+
+Este proyecto incluye varias optimizaciones para mejorar el rendimiento en entornos con recursos limitados:
+
+1. **Configuración de Gunicorn**: El archivo `gunicorn_config.py` configura tiempos de espera más largos, número óptimo de workers y threads, y precarga de la aplicación.
+2. **Optimización de memoria**: Se limita el número de hilos de PyTorch y se configura la asignación de memoria CUDA.
+3. **Precarga del modelo**: El modelo YOLO se carga una sola vez al iniciar la aplicación, no en cada solicitud.
 
 #### Verificar logs
 
@@ -55,6 +71,13 @@ Para diagnosticar problemas, revisa los logs de Render:
 1. Ve al panel de control de Render
 2. Selecciona tu servicio
 3. Haz clic en "Logs" para ver los mensajes de error detallados
+
+Errores comunes en los logs y sus soluciones:
+
+- **Error de importación de módulos**: Verifica que todas las dependencias estén correctamente instaladas en `requirements.txt`.
+- **Error de memoria (MemoryError)**: El modelo YOLO requiere más memoria de la disponible. Considera usar un modelo más pequeño o actualizar a un plan con más recursos.
+- **Error de tiempo de espera (Timeout)**: Si ves errores de timeout, aumenta el valor en `gunicorn_config.py`.
+- **Error de carga del modelo PyTorch**: Si ves errores relacionados con `torch.load()` o `UnpicklingError`, verifica que estés usando la versión correcta de PyTorch (2.0.1) y que hayas configurado `add_safe_globals()` como se muestra en este proyecto.
 
 ## Uso
 
@@ -68,6 +91,8 @@ Para diagnosticar problemas, revisa los logs de Render:
 - Asegúrate de que la ESP32-CAM esté configurada para servir imágenes en la ruta `/cam-lo.jpg`
 - Si despliegas en Render, necesitarás asegurarte de que la ESP32-CAM sea accesible desde internet
 - Se ha incluido un archivo `gunicorn_config.py` con configuraciones optimizadas para el despliegue:
-  - Timeout aumentado a 120 segundos para permitir la carga del modelo YOLO
+  - Timeout aumentado a 300 segundos para permitir la carga del modelo YOLO
   - 2 workers con 4 hilos cada uno para balancear rendimiento y uso de memoria
+  - Precarga de la aplicación (preload_app = True) para cargar el modelo una sola vez
   - Configuración para evitar problemas de memoria en el plan gratuito de Render
+  - Optimizaciones de PyTorch para reducir el uso de memoria

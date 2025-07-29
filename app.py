@@ -4,10 +4,16 @@ import requests
 import numpy as np
 from ultralytics import YOLO
 import os
+import torch
+
+# Configurar PyTorch para permitir la carga segura del modelo YOLO
+torch.serialization.add_safe_globals(['ultralytics.nn.tasks.DetectionModel'])
 
 app = Flask(__name__)
 ESP32_URL = "http://10.42.3.143/cam-lo.jpg"
-model = YOLO("yolov8n.pt")  # O el modelo que estés usando
+
+# Cargar el modelo con weights_only=False para evitar el error de UnpicklingError
+model = YOLO("yolov8n.pt", task='detect')  # Especificar la tarea explícitamente
 
 # Ruta para página principal
 @app.route("/")
@@ -71,7 +77,8 @@ def detectar():
         print("Error:", e)
         return "Error al detectar"
 
-if __name__ == "__main__":
+# Función para inicializar archivos estáticos
+def init_static_files():
     if not os.path.exists("static"):
         os.makedirs("static")
     if not os.path.exists("static/ultima.jpg"):
@@ -82,4 +89,15 @@ if __name__ == "__main__":
         with open("static/clase.txt", "w", encoding="utf-8") as f:
             f.write("Sin detección")
 
+# Inicializar archivos estáticos al cargar el módulo
+init_static_files()
+
+# Esta función se ejecutará cuando Gunicorn cargue la aplicación
+def on_starting(server):
+    print("Inicializando la aplicación y precargando el modelo YOLO...")
+    # El modelo ya está cargado globalmente, así que no es necesario hacer nada más aquí
+    pass
+
+if __name__ == "__main__":
+    # Modo de desarrollo local
     app.run(host="0.0.0.0", port=5000, debug=True)
