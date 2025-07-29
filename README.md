@@ -12,9 +12,10 @@ Esta aplicación permite detectar objetos en tiempo real utilizando una cámara 
 
 ## Requisitos
 
-- Python 3.8 o superior
+- Python 3.11.6 o superior (recomendado para compatibilidad con las dependencias)
 - ESP32-CAM configurada para transmitir imágenes
 - Dependencias listadas en `requirements.txt`
+- Suficiente memoria RAM para cargar el modelo YOLO (mínimo 512MB recomendado)
 
 ## Instalación local
 
@@ -33,7 +34,27 @@ Esta aplicación permite detectar objetos en tiempo real utilizando una cámara 
    - Tipo: Web Service
    - Entorno: Python
    - Comando de construcción: `pip install -r requirements.txt`
-   - Comando de inicio: `gunicorn app:app`
+   - Comando de inicio: `gunicorn --config gunicorn_config.py app:app`
+
+### Solución de problemas comunes
+
+#### Error 502 Bad Gateway
+
+Si encuentras un error 502 Bad Gateway, puede deberse a:
+
+1. **Tiempo de carga del modelo YOLO**: El modelo puede tardar en cargarse, especialmente en el plan gratuito de Render. La configuración de Gunicorn se ha ajustado para permitir tiempos de carga más largos.
+
+2. **Problemas de memoria**: Los modelos YOLO requieren bastante memoria. Si el servicio se queda sin memoria, puede generar un error 502. Considera actualizar a un plan con más recursos si esto ocurre frecuentemente.
+
+3. **Compatibilidad de versiones**: Asegúrate de que las versiones de las dependencias sean compatibles con la versión de Python utilizada.
+
+#### Verificar logs
+
+Para diagnosticar problemas, revisa los logs de Render:
+
+1. Ve al panel de control de Render
+2. Selecciona tu servicio
+3. Haz clic en "Logs" para ver los mensajes de error detallados
 
 ## Uso
 
@@ -46,3 +67,7 @@ Esta aplicación permite detectar objetos en tiempo real utilizando una cámara 
 - La aplicación está configurada para usar el modelo YOLOv8n por defecto
 - Asegúrate de que la ESP32-CAM esté configurada para servir imágenes en la ruta `/cam-lo.jpg`
 - Si despliegas en Render, necesitarás asegurarte de que la ESP32-CAM sea accesible desde internet
+- Se ha incluido un archivo `gunicorn_config.py` con configuraciones optimizadas para el despliegue:
+  - Timeout aumentado a 120 segundos para permitir la carga del modelo YOLO
+  - 2 workers con 4 hilos cada uno para balancear rendimiento y uso de memoria
+  - Configuración para evitar problemas de memoria en el plan gratuito de Render
